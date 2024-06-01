@@ -1,6 +1,7 @@
-# GlobalRouting
+# GlobalRouting2008
 
-This project solves instances of the ISPD Global Routing Contest 2008 and is based on a C++ programming-lab. For this repository, the code has been completely modernized. 
+This project computes approximate solutions of global routing instances, as in the ISPD Global Routing Contest 2008.
+The code is based on a C++ programming-lab at the University of Bonn, but the code has been completely modernized for the purpose of this repository. 
 
 Global routing is a notoriously hard combinatorial problem. The routing algorithm is rather simple and demonstrates a rudimentary approach to global routing. A basic outline is this:
 - Each net is routed by selecting one of its pins and searching the other pins using Dijkstra's algorithm
