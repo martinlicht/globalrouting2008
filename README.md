@@ -23,7 +23,7 @@ To clone and compile the code (debug version and normal version):
 
 ```bash
 git clone https://github.com/martinlicht/globalrouting2008.git
-cd ./globalrouting2008.git
+cd ./globalrouting2008
 make all
 ```
 
