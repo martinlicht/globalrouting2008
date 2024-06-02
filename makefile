@@ -1,8 +1,6 @@
 
 default: all 
 
-clean:
-	rm -f *.gch *.o *.out
 
 CC := clang++ -O3 -std=c++20 -g -Wall -Wextra -pedantic -Wno-sign-compare -Wnarrowing 
 
@@ -14,12 +12,18 @@ HEADERS := $(wildcard *.hpp)
 	@$(CC) -fsyntax-only $@
 	@echo "Checked $@"
 
+
+.PHONY: headerchecks all format clean
+
 headerchecks: $(HEADERS)
 	@echo "Syntax check completed."
 
 format:
 	clang-format -i common.hpp
 	clang-format -i grp.hpp
+	# clang-format -i grp2graph.hpp
+	# clang-format -i graph.hpp
+	# clang-format -i connector.hpp
 	clang-format -i priority_queue.hpp
 	clang-format -i output_tree.hpp
 	clang-format -i main.cpp
@@ -47,7 +51,6 @@ main.out:       main.cpp priority_queue.hpp grp.hpp graph.hpp grp2graph.hpp conn
 
 all: test_priority_queue.out test_grp.out test_graph.out test_grp2graph.out main.out debug_main.out
 
-.PHONY: headerchecks all format default
 
 .PHONY: data evaluationscript
 
@@ -76,5 +79,10 @@ data:
 	wget http://www.ispd.cc/contests/08/benchmark/newblue6.mfar80.3d.60.10.100.gr.gz
 	wget http://www.ispd.cc/contests/08/benchmark/newblue7.kraftwerk70.3d.80.20.82.m8.gr.gz
 	for file in *.gz; do gunzip "$$file"; done
+
+
+clean:
+	rm -f *.gch *.o *.out
+
 
 

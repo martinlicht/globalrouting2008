@@ -28,6 +28,9 @@ THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLI
 #include "grp.hpp"
 #include "priority_queue.hpp"
 
+
+// Models a 3D bounding box 
+
 struct BoundingBox
 {
     int minx;
@@ -47,6 +50,10 @@ std::ostream& operator<<(std::ostream& os, const BoundingBox& bb) {
        << ", maxz: " << bb.maxz << ")";
     return os;
 }
+
+
+
+// data structures for computing a solution 
 
 class Connector {
 private:
@@ -70,6 +77,10 @@ public:
 
     Connector( GlobalRoutingProblem& problem, Graph& graph );
 
+    bool verify_connector( int net_index, const std::set<int> targets, const std::set<int>& edgeindices ) const;
+
+    bool verify_capacities( const std::vector<std::set<int>>& solutions, const std::vector<int>& aggregated_width ) const;
+
     std::vector<std::set<int>> connect();
 
     std::set<int> create_search_forest( 
@@ -89,65 +100,31 @@ const int Connector::invalid_index = -1;
 
 
 
-bool verify_capacities( const GlobalRoutingProblem& grp, const Graph& graph, const std::vector<std::set<int>>& solutions, const std::vector<int>& aggregated_width )
+
+
+
+
+
+Connector::Connector( GlobalRoutingProblem& problem, Graph& graph )
+: 
+problem( problem ), 
+graph( graph ), 
+queued( graph.count_nodes(), -1 ),
+preceding_node( graph.count_nodes(), -1 ),
+relevant_edge( graph.count_nodes(), -1 ),
+distance( graph.count_nodes(), std::numeric_limits<float>::quiet_NaN() ),
+current_iteration( 0 ),
+aggregated_width( graph.count_edges(), 0 )
 {
-    std::vector<int> remaining_capacities = graph.get_capacities();
-
-    for( int e = 0; e < graph.count_edges(); e++ ) 
-    {
-        assert( remaining_capacities[e] == graph.get_capacity(e) );
-        assert( remaining_capacities[e] >= 0 );
-    } 
-
-    for( int e = 0; e < graph.count_edges(); e++ )
-    {
-        assert( graph.get_capacity(e)   >= 0 );
-        assert( aggregated_width[e]     >= 0 );
-        assert( remaining_capacities[e] >= 0 );
-        assert( aggregated_width[e] <= graph.get_capacity(e) );
-    }
-
-    for( int net_index = 0; net_index < solutions.size(); net_index++ )
-    {
-        const auto solution = solutions[net_index];
-        
-        for( const auto& e : solution )
-        {
-            const auto direction = graph.get_edge_direction(e);
-
-            if( direction == Graph::direction::z_plus ) continue;
-
-            const auto nodes = graph.get_nodes_of_edge( e );
-            int x1, y1, z1, x2, y2, z2;
-            std::tie( x1, y1, z1 ) = graph.get_position_from_nodeindex( nodes.first  );
-            std::tie( x2, y2, z2 ) = graph.get_position_from_nodeindex( nodes.second );
-    
-            assert( z1 == z2 );
-            assert( x1 == x2+1 or x1 == x2-1 or y1 == y2+1 or y1 == y2-1 );
-            if( x1 != x2 ) assert( y1 == y2 );
-            if( y1 != y2 ) assert( x1 == x2 );
-            
-            const auto min_spacing = grp.dimension.minimum_spacing[z1];
-            const auto min_width   = grp.dimension.minimum_width[z1];
-            
-            const auto min_net_width = grp.nets[net_index].minimum_width;
-
-            remaining_capacities[e] -= ( min_spacing + std::max(min_width,min_net_width) );
-
-            assert( remaining_capacities[e] >= 0 );
-        }
-    }
-
-    for( int e = 0; e < graph.count_edges(); e++ ) {
-        assert( remaining_capacities[e] + aggregated_width[e] == graph.get_capacity(e) );
-        assert( remaining_capacities[e] >= 0 );
-    } 
-
-    return true;
 }
 
 
-bool verify_connector( const GlobalRoutingProblem& grp, const Graph& graph, int net_index, const std::set<int> targets, const std::set<int>& edgeindices )
+
+
+
+
+
+bool Connector::verify_connector( int net_index, const std::set<int> targets, const std::set<int>& edgeindices ) const
 {
     std::set<int> nodes;
 
@@ -163,18 +140,18 @@ bool verify_connector( const GlobalRoutingProblem& grp, const Graph& graph, int 
     // if no edges, check that it is all on the same tile 
     if( edgeindices.empty() )
     {
-        const auto& pins = grp.nets[net_index].pins;
+        const auto& pins = problem.nets[net_index].pins;
 
         if( pins.empty() ) return true;
 
         const auto s = pins.begin();
         int sx, sy;
-        std::tie( sx, sy ) =  grp.tile_of_coordinate( s->x, s->y );
+        std::tie( sx, sy ) =  problem.tile_of_coordinate( s->x, s->y );
 
         for( const auto p : pins )
         {
             int tx, ty;
-            std::tie( tx, ty ) =  grp.tile_of_coordinate( p.x, p.y );
+            std::tie( tx, ty ) =  problem.tile_of_coordinate( p.x, p.y );
         
             assert( sx == tx && sy == ty );
         };
@@ -191,7 +168,7 @@ bool verify_connector( const GlobalRoutingProblem& grp, const Graph& graph, int 
         nodes.insert( edge.second );
     }
 
-    const auto& pins = grp.nets[net_index].pins;
+    const auto& pins = problem.nets[net_index].pins;
 
     // std::clog << "N/E/P " << nodes.size() << ' ' << edgeindices.size() << ' ' << pins.size() << std::endl;
 
@@ -199,7 +176,7 @@ bool verify_connector( const GlobalRoutingProblem& grp, const Graph& graph, int 
     for( const auto p : pins )
     {
         int tx, ty;
-        std::tie( tx, ty ) =  grp.tile_of_coordinate( p.x, p.y );
+        std::tie( tx, ty ) =  problem.tile_of_coordinate( p.x, p.y );
 
         int pin_node = graph.get_nodeindex_from_position( tx, ty, p.layer );
 
@@ -360,23 +337,74 @@ bool verify_connector( const GlobalRoutingProblem& grp, const Graph& graph, int 
 
 
 
-
-
-
-
-
-Connector::Connector( GlobalRoutingProblem& problem, Graph& graph )
-: 
-problem( problem ), 
-graph( graph ), 
-queued( graph.count_nodes(), -1 ),
-preceding_node( graph.count_nodes(), -1 ),
-relevant_edge( graph.count_nodes(), -1 ),
-distance( graph.count_nodes(), std::numeric_limits<float>::quiet_NaN() ),
-current_iteration( 0 ),
-aggregated_width( graph.count_edges(), 0 )
+bool Connector::verify_capacities( const std::vector<std::set<int>>& solutions, const std::vector<int>& aggregated_width ) const
 {
+    std::vector<int> remaining_capacities = graph.get_capacities();
+
+    for( int e = 0; e < graph.count_edges(); e++ ) 
+    {
+        assert( remaining_capacities[e] == graph.get_capacity(e) );
+        assert( remaining_capacities[e] >= 0 );
+    } 
+
+    for( int e = 0; e < graph.count_edges(); e++ )
+    {
+        assert( graph.get_capacity(e)   >= 0 );
+        assert( aggregated_width[e]     >= 0 );
+        assert( remaining_capacities[e] >= 0 );
+        assert( aggregated_width[e] <= graph.get_capacity(e) );
+    }
+
+    for( int net_index = 0; net_index < solutions.size(); net_index++ )
+    {
+        const auto solution = solutions[net_index];
+        
+        for( const auto& e : solution )
+        {
+            const auto direction = graph.get_edge_direction(e);
+
+            if( direction == Graph::direction::z_plus ) continue;
+
+            const auto nodes = graph.get_nodes_of_edge( e );
+            int x1, y1, z1, x2, y2, z2;
+            std::tie( x1, y1, z1 ) = graph.get_position_from_nodeindex( nodes.first  );
+            std::tie( x2, y2, z2 ) = graph.get_position_from_nodeindex( nodes.second );
+    
+            assert( z1 == z2 );
+            assert( x1 == x2+1 or x1 == x2-1 or y1 == y2+1 or y1 == y2-1 );
+            if( x1 != x2 ) assert( y1 == y2 );
+            if( y1 != y2 ) assert( x1 == x2 );
+            
+            const auto min_spacing = problem.dimension.minimum_spacing[z1];
+            const auto min_width   = problem.dimension.minimum_width[z1];
+            
+            const auto min_net_width = problem.nets[net_index].minimum_width;
+
+            remaining_capacities[e] -= ( min_spacing + std::max(min_width,min_net_width) );
+
+            assert( remaining_capacities[e] >= 0 );
+        }
+    }
+
+    for( int e = 0; e < graph.count_edges(); e++ ) {
+        assert( remaining_capacities[e] + aggregated_width[e] == graph.get_capacity(e) );
+        assert( remaining_capacities[e] >= 0 );
+    } 
+
+    return true;
 }
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -486,7 +514,7 @@ std::vector<std::set<int>> Connector::connect()
         auto node_set = T; 
         node_set.merge(S);
 
-        assert( verify_connector( problem, graph, n, node_set, edgeindices ) );
+        assert( verify_connector( n, node_set, edgeindices ) );
 
         // update the aggregated widths 
         for( const auto edgeindex : edgeindices )
@@ -524,7 +552,7 @@ std::vector<std::set<int>> Connector::connect()
     
     }
 
-    // assert( verify_capacities( problem, graph, trees, aggregated_width ) );
+    // assert( verify_capacities( trees, aggregated_width ) );
 
     return trees;
 }
@@ -642,8 +670,6 @@ std::set<int> Connector::create_search_forest(
                     continue;
                 }
             }
-
-            
             
             const auto current_direction = graph.get_edge_direction( edgeindex );
 
@@ -689,9 +715,6 @@ std::set<int> Connector::create_search_forest(
                 assert( required_capacity + aggregated_width[edgeindex] <= current_edge_capacity );
                 assert( current_edge_capacity > 0 );
             }
-            
-            
-            
             
             // calculate the costs of the edge // NOTE each direction has unit cost 
             int length_of_edge = 0;
